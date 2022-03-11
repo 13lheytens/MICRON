@@ -15,6 +15,9 @@ from collections import defaultdict
 from models import GAMENet
 from util import llprint, multi_label_metric, ddi_rate_score, get_n_params
 
+# @heytens: This is used to load the voc mappings from CSV files I generated.
+from voc import load_voc_from_csvs
+
 torch.manual_seed(1203)
 
 model_name = 'GAMENet'
@@ -123,18 +126,20 @@ def eval(model, data_eval, voc_size, epoch):
 def main():
 
     data_path = '../data/records_final.pkl'
-    voc_path = '../data/voc_final.pkl'
 
     ehr_adj_path = '../data/ehr_adj_final.pkl'
     ddi_adj_path = '../data/ddi_A_final.pkl'
-    device = torch.device('cuda')
+
+    # @heytens: I don't have access to GPUs, so I'm using cpu instead.
+    # device = torch.device('cuda')
+    device = torch.device('cpu')
 
     ehr_adj = dill.load(open(ehr_adj_path, 'rb'))
     ddi_adj = dill.load(open(ddi_adj_path, 'rb'))
     data = dill.load(open(data_path, 'rb'))
 
-    voc = dill.load(open(voc_path, 'rb'))
-    diag_voc, pro_voc, med_voc = voc['diag_voc'], voc['pro_voc'], voc['med_voc']
+    # @heytens: Load voc objects from CSV.
+    diag_voc, pro_voc, med_voc = load_voc_from_csvs('../data/')
 
     np.random.seed(1203)
     np.random.shuffle(data)

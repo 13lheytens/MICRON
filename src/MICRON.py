@@ -12,9 +12,8 @@ from models import MICRON
 from util import llprint, multi_label_metric, ddi_rate_score, get_n_params
 import torch.nn.functional as F
 
-# @heytens: These are used to load the voc mappings from CSV files I generated.
-import pandas as pd
-from voc import Voc
+# @heytens: This is used to load the voc mappings from CSV files I generated.
+from voc import load_voc_from_csvs
 
 # torch.set_num_threads(30)
 torch.manual_seed(1203)
@@ -131,36 +130,10 @@ def eval(model, data_eval, voc_size, epoch, val=0, threshold1=0.8, threshold2=0.
     else:
         return np.array(label_list), np.array(prob_list)
 
-# @heytens: Loads voc from csvs.
-def load_voc_from_csvs(datadir_path):
-    diag_voc = Voc()
-    pro_voc = Voc()
-    med_voc = Voc()
-
-    diag_voc.idx2word = pd.read_csv(datadir_path + 'diag_voc.csv', index_col='idx').word.to_dict()
-    pro_voc.idx2word = pd.read_csv(datadir_path + 'pro_voc.csv', index_col='idx').word.to_dict()
-    med_voc.idx2word = pd.read_csv(datadir_path + 'med_voc.csv', index_col='idx').word.to_dict()
-
-    def add_word_to_idx(voc):
-        for idx, word in voc.idx2word.items():
-            print(idx, word)
-            if word not in voc.word2idx:
-                voc.word2idx[word] = idx
-        return voc
-
-    diag_voc = add_word_to_idx(diag_voc)
-    pro_voc = add_word_to_idx(pro_voc)
-    med_voc = add_word_to_idx(med_voc)
-
-    return diag_voc, pro_voc, med_voc
-
 def main():
 
     # load data
     data_path = '../data/records_final.pkl'
-
-    # @heytens: I am no longer using this .pkl file because of dill issues with loading binary data.
-    # voc_path = '../data/voc_final.pkl'
 
     ddi_adj_path = '../data/ddi_A_final.pkl'
 
@@ -169,10 +142,7 @@ def main():
     device = torch.device('cpu')
 
     ddi_adj = dill.load(open(ddi_adj_path, 'rb'))
-    data = dill.load(open(data_path, 'rb')) 
-
-    # voc = dill.load(open(voc_path, 'rb'))
-    # diag_voc, pro_voc, med_voc = voc['diag_voc'], voc['pro_voc'], voc['med_voc']
+    data = dill.load(open(data_path, 'rb'))
 
     # @heytens: Load voc objects from CSV.
     diag_voc, pro_voc, med_voc = load_voc_from_csvs('../data/')
