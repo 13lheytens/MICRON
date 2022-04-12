@@ -1,2 +1,8 @@
 src/__pycache__/
 src/saved/
+data/drug-DDI.csv
+data/PRESCRIPTIONS*
+data/DIAGNOSES_ICD*
+data/PROCEDURES_ICD*
+.ipynb_checkpoints*
+__pycache__*

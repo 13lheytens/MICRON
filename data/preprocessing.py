@@ -203,8 +203,16 @@ def create_str_token_mapping(df):
         diag_voc.add_sentence(row['ICD9_CODE'])
         med_voc.add_sentence(row['NDC'])
         pro_voc.add_sentence(row['PRO_CODE'])
-    
-    dill.dump(obj={'diag_voc':diag_voc, 'med_voc':med_voc ,'pro_voc':pro_voc}, file=open('voc_final.pkl','wb'))
+
+    voc_final = {'diag_voc':diag_voc, 'med_voc':med_voc ,'pro_voc':pro_voc}
+    # @heytens: Write vocab as csvs so that I can load on my laptop.
+    for k, v in voc_final.items():
+        df = pd.DataFrame.from_dict(v.idx2word, orient='index').reset_index()
+        df.columns = ['idx', 'word']
+        print('Writing', k + '.csv')
+        df.to_csv(k + '.csv', index=False)
+
+    dill.dump(obj=voc_final, file=open('voc_final.pkl','wb'))
     return diag_voc, med_voc, pro_voc
 
 # create final records
@@ -291,9 +299,12 @@ def get_ddi_matrix(records, med_voc, ddi_file):
 if __name__ == '__main__':
 
     # files can be downloaded from https://mimic.physionet.org/gettingstarted/dbsetup/
-    med_file = '/srv/local/data/physionet.org/files/mimiciii/1.4/PRESCRIPTIONS.csv'
-    diag_file = '/srv/local/data/physionet.org/files/mimiciii/1.4/DIAGNOSES_ICD.csv'
-    procedure_file = '/srv/local/data/physionet.org/files/mimiciii/1.4/PROCEDURES_ICD.csv'
+    # med_file = '/srv/local/data/physionet.org/files/mimiciii/1.4/PRESCRIPTIONS.csv'
+    med_file = 'PRESCRIPTIONS.csv'
+    # diag_file = '/srv/local/data/physionet.org/files/mimiciii/1.4/DIAGNOSES_ICD.csv'
+    diag_file = 'DIAGNOSES_ICD.csv'
+    # procedure_file = '/srv/local/data/physionet.org/files/mimiciii/1.4/PROCEDURES_ICD.csv'
+    procedure_file = 'PROCEDURES_ICD.csv'
 
     med_structure_file = 'idx2drug.pkl'
 
