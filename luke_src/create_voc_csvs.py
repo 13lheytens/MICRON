@@ -1,6 +1,10 @@
 import dill
 import pandas as pd
 
+
+# File Description:
+# This is a script for transforming the "../data/voc_final.pkl" file into csvs.
+
 # @heytens: On my laptop, I was having issues loading the `voc_final.pkl` file. The dill package was throwing an
 #           exception as it loaded the binary data (only for the `voc_final.pkl` file). After spending too much time
 #           trying to fix it, I decided to use an AWS server to generate voc CSVs instead.
