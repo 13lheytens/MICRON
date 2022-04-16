@@ -60,7 +60,7 @@ class NeuralNetPrescriptionHistory(nn.Module):
 
 
 # Evaluate the model on the test samples using both (1) the original metrics from the paper and (2) simple sklearn
-# classification metrics, where each medication for each visit is equally weighted as a binary classification problem.
+# classification metrics. Each patient is scored, and weighted equally in the aggregated scores.
 def evaluate(model, test_samples):
     model.eval()
 
@@ -115,7 +115,7 @@ def train_model(model, train_samples, test_samples, optimizer, num_epochs, crite
             curr_epoch_loss.append(loss.cpu().data.numpy())
 
         print(f"epoch {epoch}: curr_epoch_loss={np.mean(curr_epoch_loss)}")
-        # Evaluate the model on the validation set every 3 epochs.
+        # Evaluate the model on the validation set every 5 epochs.
         if epoch % 5 == 0:
             # Evaluate the partially-trained model.
             evaluate(model, test_samples)
