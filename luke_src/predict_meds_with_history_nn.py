@@ -8,7 +8,7 @@ from data_loader import get_voc_sizes, get_train_test_data
 from utils import classification_metrics, original_metrics, print_original_metric_results, print_simple_metric_results
 
 
-# File Description:
+# File Description: Baseline Model 3.
 # This file contains a NN implementation for predicting patient medication. It is also a script that will train and
 # periodically evaluate the model.
 

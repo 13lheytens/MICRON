@@ -5,7 +5,7 @@ from data_loader import get_voc_sizes, get_train_test_data, get_vector_represent
 from utils import classification_metrics, original_metrics, print_original_metric_results, print_simple_metric_results
 
 
-# File Description:
+# File Description: Baseline Model 1.
 # This is a script that evaluates a simple strategy for predicting patient medication. This strategy is simply
 # predicting the previous visit's medication (no change).
 
