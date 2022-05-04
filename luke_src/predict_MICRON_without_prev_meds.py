@@ -4,21 +4,22 @@ import numpy as np
 import argparse
 import datetime
 
+
 from torch.optim import Adam
 
-from data_loader import get_voc_sizes, get_train_test_data
+from data_loader import get_voc_sizes, get_micron_train_test_data
 from utils import classification_metrics, original_metrics, print_original_metric_results, print_simple_metric_results
 
 
-# File Description: Baseline Model 3.
-# This file contains a NN implementation for predicting patient medication. It is also a script that will train and
-# evaluate the model.
+# File Description: MICRON Ablation implementation - without knowledge of previous visit medication.
+# This file contains my MICRON Ablation implementation for predicting patient medication. It is also a script that will
+# train and evaluate the model.
 
-# Neural Network that uses current diagnosis codes, current procedural codes, and the prescriptions from the most recent
-# visit to predict the current visit medication prescriptions.
-class NeuralNetPrescriptionHistory(nn.Module):
+# MICRON model for prediction patient visit medications, but without knowledge of the previous visit medication. I have
+# removed the "previous visit medications" input layer from my original MICRON model to observe the effect on f1 score.
+class LukeMicronAblation(nn.Module):
     def __init__(self, diag_len, proc_len, med_len):
-        super(NeuralNetPrescriptionHistory, self).__init__()
+        super(LukeMicronAblation, self).__init__()
 
         # Diagnosis codes embedding layer.
         self.diag_embedding = nn.Embedding(diag_len, 128)
@@ -26,39 +27,52 @@ class NeuralNetPrescriptionHistory(nn.Module):
         # Procedural codes embedding layer.
         self.proc_embedding = nn.Embedding(proc_len, 128)
 
-        # Map previous meds from med_len -> 128.
-        self.med_embedding = nn.Embedding(med_len, 128)
+        # Map combined diagnosis and procedural code embeddings 128*2 -> 128.
+        self.linear_1 = nn.Linear(128 * 2, 128)
+        self.dropout = nn.Dropout(.5)
 
-        # Map combined embeddings 128*3 -> 64.
-        self.linear_1 = nn.Linear(128 * 3, 64)
+        # Map current diag/proc codes (128) and previous diag/proc codes (128) -> 256.
+        self.linear_2 = nn.Linear(128 * 2, 256)
+        # Transform 256 -> medical code encoding.
+        self.linear_3 = nn.Linear(256, med_len)
 
-        # Map to the same shape as the target.
-        self.linear_2 = nn.Linear(64, med_len)
+        # Combines diagnosis and procedural codes for a single visit.
+        self.health_net = nn.Sequential(self.linear_1,
+                                        self.dropout)
 
-        self.nn_steps = nn.Sequential(self.linear_1,
-                                      nn.ReLU(),
-                                      self.linear_2,
-                                      nn.Sigmoid()
-                                      )
+        # Uses current diagnosis/procedural codes and the previous visit diagnosis/procedural codes to make a prediction
+        # about current visit medical codes.
+        self.prescription_net = nn.Sequential(self.linear_2,
+                                              nn.ReLU(),
+                                              self.linear_3,
+                                              nn.Sigmoid())
 
-    # Uses diagnosis and procedural codes, along with the previous visit's prescription to predict the current visit
-    # medical code prescriptions.
-    def forward(self, diag_codes, proc_codes, prev_med_codes):
+    # Uses diagnosis and procedural codes to predict the current visit medical code prescriptions.
+    def forward(self, diag_codes, proc_codes, prev_diag_codes, prev_proc_codes):
         # Sum the embedded diagnosis codes that are set for a single visit, then stack into a tensor with shape (num_visits, 128).
         embedded_diag = torch.stack(
             [torch.sum(self.diag_embedding(visit_diag_codes), dim=0) for visit_diag_codes in diag_codes])
         # Sum the embedded procedural codes that are set for a single visit, then stack into a tensor with shape (num_visits, 128).
         embedded_proc = torch.stack(
             [torch.sum(self.proc_embedding(visit_proc_codes), dim=0) for visit_proc_codes in proc_codes])
-        # Sum the embedded medical codes that are set from the previous visit, then stack into a tensor with shape (num_visits, 128).
-        embedded_prev_codes = torch.stack(
-            [torch.sum(self.med_embedding(med_codes), dim=0) for med_codes in prev_med_codes])
 
-        # Combine the embedded codes into one tensor with shape (num_visits, 128*3).
-        combined_inputs = torch.cat([embedded_diag, embedded_proc, embedded_prev_codes], dim=1)
+        # Create the previous visit diagnosis and procedural code embeddings.
+        prev_embedded_diag = torch.stack(
+            [torch.sum(self.diag_embedding(prev_visit_diag_codes), dim=0) for prev_visit_diag_codes in prev_diag_codes])
+        prev_embedded_proc = torch.stack(
+            [torch.sum(self.proc_embedding(prev_visit_proc_codes), dim=0) for prev_visit_proc_codes in prev_proc_codes])
 
-        # Predict the medicine prescriptions for the patient "batch".
-        return self.nn_steps(combined_inputs)
+        # Current visit health net representation based on diagnosis and procedural codes.
+        cur_health_net_result = self.health_net(torch.cat([embedded_diag, embedded_proc], dim=1))
+        # Previous visit health net representation based on last visit diagnosis and procedural codes.
+        prev_health_net_result = self.health_net(torch.cat([prev_embedded_diag, prev_embedded_proc], dim=1))
+
+        # Combine the current health net result and previous health net result into a single representation.
+        prescription_representation = torch.cat([cur_health_net_result, prev_health_net_result],
+                                                dim=1)
+
+        # Return the result of the prescription net.
+        return self.prescription_net(prescription_representation)
 
 
 # Evaluate the model on the test samples using both (1) the original metrics from the paper and (2) simple sklearn
@@ -75,10 +89,10 @@ def evaluate(model, test_samples):
             print('Evaluating test patient number:', patient_num, '-', patient_num + 500)
         patient_num += 1
 
-        diag_codes, proc_codes, prev_med_codes, cur_meds = sample_patient
+        diag_codes, proc_codes, prev_diag, prev_proc, _, cur_meds = sample_patient
 
         # y_hat holds the predicted medication probabilities.
-        y_hat = model(diag_codes, proc_codes, prev_med_codes)
+        y_hat = model(diag_codes, proc_codes, prev_diag, prev_proc)
         y_pred = y_hat > .5
         y = torch.stack(cur_meds)
 
@@ -100,12 +114,12 @@ def train_model(model, train_samples, optimizer, num_epochs, criterion):
     for epoch in range(num_epochs):
         model.train()
         curr_epoch_loss = []
-        for diag_codes, proc_codes, prev_meds, cur_meds in train_samples:
+        for diag_codes, proc_codes, prev_diag, prev_proc, _, cur_meds in train_samples:
             # Zero out the currently accumulated gradient.
             optimizer.zero_grad()
 
             # Predict medications.
-            y_hat = model.forward(diag_codes, proc_codes, prev_meds)
+            y_hat = model.forward(diag_codes, proc_codes, prev_diag, prev_proc)
 
             # Batch the target values into the expected tensor format.
             y = torch.stack(cur_meds)
@@ -122,23 +136,22 @@ def train_model(model, train_samples, optimizer, num_epochs, criterion):
 
     print('Total Training time', (datetime.datetime.now() - start_time).total_seconds())
 
-
 # Trains and/or evaluates the model.
 def run_model(test_only, save_trained_model):
     # Fetch the max index for diag, proc, and med codes.
     num_diag_codes, num_proc_codes, num_med_codes = get_voc_sizes()
 
-    # Initialize the model.
-    model = NeuralNetPrescriptionHistory(num_diag_codes, num_proc_codes, num_med_codes)
-    print(model)
-
     # Fetch the train and test samples.
-    train_samples, batch_train_samples, test_samples = get_train_test_data(num_med_codes)
+    train_samples, batch_train_samples, test_samples = get_micron_train_test_data(num_med_codes, batch_size=128)
+
+    # Initialize the model.
+    model = LukeMicronAblation(num_diag_codes, num_proc_codes, num_med_codes)
+    print(model)
 
     if test_only:
         print('Loading Pretrained Model...')
         # Load the pretrained model.
-        model.load_state_dict(torch.load(open('pretrained_models/Baseline3.model', 'rb')))
+        model.load_state_dict(torch.load(open('pretrained_models/MICRON_ablation.model', 'rb')))
 
         # Evaluate the pre-trained model.
         evaluate(model, test_samples)
@@ -159,7 +172,7 @@ def run_model(test_only, save_trained_model):
 
     if save_trained_model:
         # Save the fully trained model.
-        torch.save(model.state_dict(), open('pretrained_models/Baseline3.model', 'wb'))
+        torch.save(model.state_dict(), open('pretrained_models/MICRON_ablation.model', 'wb'))
 
 
 if __name__ == '__main__':

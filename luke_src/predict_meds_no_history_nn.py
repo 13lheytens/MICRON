@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import numpy as np
+import argparse
+import datetime
 
 from torch.optim import Adam
 
@@ -10,7 +12,7 @@ from utils import classification_metrics, original_metrics, print_original_metri
 
 # File Description: Baseline Model 2.
 # This file contains a NN implementation for predicting patient medication. It is also a script that will train and
-# periodically evaluate the model.
+# evaluate the model.
 
 # Neural Network that uses current diagnosis codes and procedural codes to predict medication prescriptions.
 class NeuralNetNoHistory(nn.Module):
@@ -66,7 +68,7 @@ def evaluate(model, test_samples):
     for sample_patient in test_samples:
         # Print evaluation progress.
         if patient_num % 500 == 0:
-            print('Evaluating test patient number:', patient_num)
+            print('Evaluating test patient number:', patient_num, '-', patient_num + 500)
         patient_num += 1
 
         diag_codes, proc_codes, _, cur_meds = sample_patient
@@ -89,8 +91,9 @@ def evaluate(model, test_samples):
     print_simple_metric_results(np.array(lukes_simple_patient_metrics))
 
 
-# Trains the model, and checks the test results every 5 epochs.
-def train_model(model, train_samples, test_samples, optimizer, num_epochs, criterion):
+# Trains the model.
+def train_model(model, train_samples, optimizer, num_epochs, criterion):
+    start_time = datetime.datetime.now()
     for epoch in range(num_epochs):
         model.train()
         curr_epoch_loss = []
@@ -113,14 +116,12 @@ def train_model(model, train_samples, test_samples, optimizer, num_epochs, crite
             curr_epoch_loss.append(loss.cpu().data.numpy())
 
         print(f"epoch {epoch}: curr_epoch_loss={np.mean(curr_epoch_loss)}")
-        # Evaluate the model on the test set every 5 epochs.
-        if epoch % 5 == 0:
-            # Evaluate the partially-trained model.
-            evaluate(model, test_samples)
+
+    print('Total Training time', (datetime.datetime.now() - start_time).total_seconds())
 
 
-# Trains and periodically evaluates the model.
-def run_model():
+# Trains and/or evaluates the model.
+def run_model(test_only, save_trained_model):
     # Fetch the max index for diag, proc, and med codes.
     num_diag_codes, num_proc_codes, num_med_codes = get_voc_sizes()
 
@@ -131,6 +132,15 @@ def run_model():
     # Fetch the train and test samples.
     train_samples, batched_train_samples, test_samples = get_train_test_data(num_med_codes)
 
+    if test_only:
+        print('Loading Pretrained Model...')
+        # Load the pretrained model.
+        model.load_state_dict(torch.load(open('pretrained_models/Baseline2.model', 'rb')))
+
+        # Evaluate the pre-trained model.
+        evaluate(model, test_samples)
+        return
+
     # Adam optimizer outperforms SGD for this model.
     optimizer = Adam(model.parameters(), lr=.001)
 
@@ -139,10 +149,20 @@ def run_model():
     criterion = torch.nn.BCELoss()
 
     # Train the model.
-    train_model(model, batched_train_samples, test_samples, optimizer, 15, criterion)
+    train_model(model, batched_train_samples, optimizer, 15, criterion)
 
     # Evaluate the fully trained model.
     evaluate(model, test_samples)
 
+    if save_trained_model:
+        # Save the fully trained model.
+        torch.save(model.state_dict(), open('pretrained_models/Baseline2.model', 'wb'))
+
+
 if __name__ == '__main__':
-    run_model()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--test_only", action='store_true')
+    parser.add_argument("--save_trained", action='store_true')
+    args = parser.parse_args()
+
+    run_model(args.test_only, args.save_trained)

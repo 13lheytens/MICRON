@@ -10,7 +10,9 @@ from src.util import multi_label_metric
 
 
 # File Description:
-# This file contains various helper functions.
+# This file contains various helper functions for computing classification metrics. It holds my implementation
+# classification_metrics() and the original author's implementation original_metrics() for comparison (to ensure that
+# the metric computations are similar to the original author).
 
 # Computes various metrics based on predicted and true labels.
 def classification_metrics(Y_score, Y_pred, Y_true, print_metrics=False):
